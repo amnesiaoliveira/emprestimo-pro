@@ -25,6 +25,7 @@ export default function Home() {
   const [amount, setAmount] = useState(5000);
   const [rate, setRate] = useState(3.5);
   const [months, setMonths] = useState(10);
+  const [frequencyDays, setFrequencyDays] = useState(30);
   const [toast, setToast] = useState("");
 
   useEffect(() => {
@@ -44,11 +45,16 @@ export default function Home() {
   }, [toast]);
 
   const calc = useMemo(() => {
-    const r = rate / 100;
+    const monthlyRate = rate / 100;
+    const r = Math.pow(1 + monthlyRate, frequencyDays / 30) - 1;
     const installment = r === 0 ? amount / months : amount * (r * Math.pow(1 + r, months)) / (Math.pow(1 + r, months) - 1);
     const total = installment * months;
-    return { installment, total, interest: total - amount };
-  }, [amount, rate, months]);
+    const firstDue = new Date();
+    firstDue.setDate(firstDue.getDate() + frequencyDays);
+    const finalDue = new Date();
+    finalDue.setDate(finalDue.getDate() + frequencyDays * months);
+    return { installment, total, interest: total - amount, firstDue, finalDue };
+  }, [amount, rate, months, frequencyDays]);
 
   function saveClient(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -122,8 +128,10 @@ export default function Home() {
           <section className="panel simulator">
             <div className="panel-title"><div><h3>Simulador rápido</h3><p>Calcule antes de emprestar</p></div><span className="calc-icon">%</span></div>
             <label>Valor do empréstimo<div className="input-money"><span>R$</span><input aria-label="Valor do empréstimo" type="number" min="100" value={amount} onChange={(e) => setAmount(Number(e.target.value))} /></div></label>
-            <div className="two-fields"><label>Juros ao mês<div className="suffix"><input aria-label="Juros ao mês" type="number" step="0.1" value={rate} onChange={(e) => setRate(Number(e.target.value))} /><span>%</span></div></label><label>Parcelas<select aria-label="Número de parcelas" value={months} onChange={(e) => setMonths(Number(e.target.value))}>{[3, 6, 10, 12, 18, 24, 36].map((n) => <option key={n}>{n}</option>)}</select></label></div>
-            <div className="result"><div><span>Parcela mensal</span><strong>{money.format(calc.installment)}</strong></div><div><span>Juros total</span><b>{money.format(calc.interest)}</b></div><div><span>Total a receber</span><b>{money.format(calc.total)}</b></div></div>
+            <div className="two-fields"><label>Juros ao mês<div className="suffix"><input aria-label="Juros ao mês" type="number" step="0.1" value={rate} onChange={(e) => setRate(Number(e.target.value))} /><span>%</span></div></label><label>Número de parcelas<select aria-label="Número de parcelas" value={months} onChange={(e) => setMonths(Number(e.target.value))}>{[3, 6, 10, 12, 18, 24, 36].map((n) => <option key={n}>{n}</option>)}</select></label></div>
+            <label>Pagamento a cada<select aria-label="Intervalo entre pagamentos" value={frequencyDays} onChange={(e) => setFrequencyDays(Number(e.target.value))}><option value="7">7 dias (semanal)</option><option value="15">15 dias (quinzenal)</option><option value="30">30 dias (mensal)</option><option value="45">45 dias</option><option value="60">60 dias (bimestral)</option></select></label>
+            <div className="schedule-hint"><span>◷</span><div><b>Primeiro pagamento em {frequencyDays} dias</b><small>Previsão: {calc.firstDue.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}</small></div></div>
+            <div className="result"><div><span>Valor de cada parcela</span><strong>{money.format(calc.installment)}</strong></div><div><span>Juros total</span><b>{money.format(calc.interest)}</b></div><div><span>Total a receber</span><b>{money.format(calc.total)}</b></div></div>
             <button className="primary full" onClick={() => setModal("loan")}>Continuar</button>
           </section>
         </div>
@@ -136,20 +144,20 @@ export default function Home() {
 
       <nav className="mobile-nav">{nav.map((item) => <button key={item.label} className={!item.key ? "active" : ""} onClick={() => setModal(item.key)}><span>{item.icon}</span><small>{item.label}</small></button>)}</nav>
       <button className="mobile-fab" onClick={() => setModal("loan")} aria-label="Novo empréstimo">＋</button>
-      {modal && <ModalContent type={modal} close={() => setModal(null)} saveClient={saveClient} clients={clients} calc={calc} months={months} open={setModal} success={(message) => { setModal(null); setToast(message); }} />}
+      {modal && <ModalContent type={modal} close={() => setModal(null)} saveClient={saveClient} clients={clients} calc={calc} months={months} frequencyDays={frequencyDays} setFrequencyDays={setFrequencyDays} open={setModal} success={(message) => { setModal(null); setToast(message); }} />}
       {toast && <div className="toast"><span>✓</span>{toast}</div>}
     </main>
   );
 }
 
-function ModalContent({ type, close, saveClient, clients, calc, months, open, success }: { type: Exclude<Modal, null>; close: () => void; saveClient: (event: FormEvent<HTMLFormElement>) => void; clients: Client[]; calc: { installment: number; total: number; interest: number }; months: number; open: (type: Modal) => void; success: (message: string) => void }) {
+function ModalContent({ type, close, saveClient, clients, calc, months, frequencyDays, setFrequencyDays, open, success }: { type: Exclude<Modal, null>; close: () => void; saveClient: (event: FormEvent<HTMLFormElement>) => void; clients: Client[]; calc: { installment: number; total: number; interest: number; firstDue: Date; finalDue: Date }; months: number; frequencyDays: number; setFrequencyDays: (days: number) => void; open: (type: Modal) => void; success: (message: string) => void }) {
   const titles: Record<Exclude<Modal, null>, [string, string]> = {
     client: ["Novo cliente", "Cadastre apenas as informações essenciais."], loan: ["Novo empréstimo", "Revise a simulação antes de continuar."], clients: ["Clientes", `${clients.length} pessoas cadastradas`], loans: ["Empréstimos", "Acompanhe toda a sua carteira"], payments: ["Parcelas", "Próximos recebimentos e atrasos"], reports: ["Relatórios", "Resumo financeiro da sua operação"], help: ["Ajuda e suporte", "Como podemos ajudar?"], profile: ["Minha conta", "Preferências e dados do usuário"],
   };
   return <div className="modal-backdrop" role="dialog" aria-modal="true" onMouseDown={(event) => event.target === event.currentTarget && close()}><section className="modal-sheet">
     <div className="modal-head"><div><h2>{titles[type][0]}</h2><p>{titles[type][1]}</p></div><button onClick={close} aria-label="Fechar">×</button></div>
     {type === "client" && <form className="clean-form" onSubmit={saveClient}><label>Nome completo<input name="name" autoFocus required placeholder="Ex.: Ana Oliveira" /></label><label>Telefone<input name="phone" required placeholder="(00) 00000-0000" inputMode="tel" /></label><label>CPF <small>opcional</small><input name="cpf" placeholder="000.000.000-00" inputMode="numeric" /></label><button className="primary full" type="submit">Cadastrar cliente</button></form>}
-    {type === "loan" && <div><div className="loan-resume"><span>{months} parcelas de</span><strong>{money.format(calc.installment)}</strong><div><small>Juros: {money.format(calc.interest)}</small><small>Total: {money.format(calc.total)}</small></div></div><label className="modal-label">Cliente<select><option>Selecione um cliente</option>{clients.map((client) => <option key={client.name}>{client.name}</option>)}</select></label><button className="primary full" onClick={() => success("Empréstimo salvo como simulação")}>Salvar simulação</button></div>}
+    {type === "loan" && <div><div className="loan-resume"><span>{months} parcelas de</span><strong>{money.format(calc.installment)}</strong><div><small>Juros: {money.format(calc.interest)}</small><small>Total: {money.format(calc.total)}</small></div></div><label className="modal-label">Cliente<select><option>Selecione um cliente</option>{clients.map((client) => <option key={client.name}>{client.name}</option>)}</select></label><label className="modal-label">Receber a cada<select value={frequencyDays} onChange={(e) => setFrequencyDays(Number(e.target.value))}><option value="7">7 dias (semanal)</option><option value="15">15 dias (quinzenal)</option><option value="30">30 dias (mensal)</option><option value="45">45 dias</option><option value="60">60 dias (bimestral)</option></select></label><div className="payment-calendar"><div><small>Primeira parcela</small><b>{calc.firstDue.toLocaleDateString("pt-BR")}</b></div><span>→</span><div><small>Última parcela</small><b>{calc.finalDue.toLocaleDateString("pt-BR")}</b></div></div><button className="primary full" onClick={() => success(`Empréstimo com pagamento a cada ${frequencyDays} dias salvo`)}>Salvar simulação</button></div>}
     {type === "clients" && <div><button className="outline-action" onClick={() => open("client")}>＋ Cadastrar novo cliente</button><div className="modal-list">{clients.map((client, index) => <div key={client.name}><span className={`client-avatar a${index % 3}`}>{client.initials}</span><span><strong>{client.name}</strong><small>{client.phone} • {client.cpf}</small></span><b>›</b></div>)}</div></div>}
     {type === "loans" && <div className="modal-list">{loans.map((loan, index) => <div key={loan.name}><span className={`client-avatar a${index}`}>{loan.initials}</span><span><strong>{loan.name}</strong><small>{money.format(loan.value)} • {loan.due}</small></span><span className={`badge ${loan.tone}`}>{loan.status}</span></div>)}</div>}
     {type === "payments" && <div className="feature-body"><div className="feature-stat"><small>A receber esta semana</small><strong>{money.format(3565.54)}</strong></div><div className="modal-list"><div><span className="date-box">HOJE</span><span><strong>Roberto Lima</strong><small>Parcela 3 de 6</small></span><b>{money.format(516.18)}</b></div><div><span className="date-box">12 AGO</span><span><strong>Mariana Souza</strong><small>Parcela 4 de 10</small></span><b>{money.format(620.42)}</b></div></div></div>}
